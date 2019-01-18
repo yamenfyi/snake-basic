@@ -18,7 +18,7 @@ module.exports = {
   },
   output: {
     path: path.resolve(path.join(__dirname, "docs")), // Note: Physical files are only output by the production build task `npm run build`.
-    publicPath: "/",
+    publicPath: "/snake-basic/",
     filename: "[name].[contenthash].js" // name is the entry point defined above, contenthash is the generated hash (for cache busting - no need for webpack-md5-hash anymore)
   },
   // Webpack 4 removed the need for CommonsChunkPlugin (and DedupePlugin). Use optimization.splitChunks instead.
