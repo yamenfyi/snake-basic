@@ -48,6 +48,7 @@ class SnakeGame extends React.Component {
       snakeHead: snakeHead,
       snakeTail: snakeHead,
       snakeLength: 1,
+      food: -1,
       board: board,
       paused: true,
       gameOver: false,
@@ -60,7 +61,7 @@ class SnakeGame extends React.Component {
   getNumRows() { return this.props.numRows || 20; }
   getNumCols() { return this.props.numCols || 20; }
   getCellSize() { return this.props.cellSize || 30; }
-  getSpeed() { return this.props.speed || 50; }
+  getSpeed() { return this.props.speed || 200; }
 
   resume() {
     // setState is asynchronous -- so using the function atomic setState is better since we care about the prevState
@@ -88,6 +89,7 @@ class SnakeGame extends React.Component {
     let snakeLength = this.state.snakeLength;
     let snakeHead = this.state.snakeHead;
     let snakeTail = this.state.snakeTail;
+    let food = this.state.food;
 
     // 2) Set new head index
     snakeHead = getNextHead(snakeHead, this.state.direction, numRows, numCols);
@@ -102,6 +104,7 @@ class SnakeGame extends React.Component {
         // 4) If new head cell is food -- snake grows (new head cell becomes body, tail index/cell don't change)
         board[snakeHead] = BODY;
         snakeLength++;
+        food = -1;
         break;
       }
       default: {
@@ -114,11 +117,27 @@ class SnakeGame extends React.Component {
       }
     }
 
+    // 6) Put food on the board if there isn't any
+    if (food === -1) {
+      for (let i = 0; i < 500; i++) {
+        let random = generateRandomInteger(0, numRows * numCols);
+        if (board[random] === FOOD || board[random] === BODY) continue;
+        board[random] = FOOD;
+        food = random;
+        break;
+      }
+    }
+
+    if (food === -1) {
+      throw new Error("Failed to generate new food position after 500 retries.")
+    }
+
     this.setState({
       snakeHead: snakeHead,
       snakeTail: snakeTail,
       snakeLength: snakeLength,
-      board: board,
+      food: food,
+      board: board
     });
   }
 
@@ -172,6 +191,12 @@ class SnakeGame extends React.Component {
       </div>
     )
   }
+}
+
+// min inclusive, max exclusive
+function generateRandomInteger(min, max) {
+  let number =  Math.random() * (max - min) + min;
+  return Math.floor(number);
 }
 
 function getNextTail(tail, board) {
