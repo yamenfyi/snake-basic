@@ -5,15 +5,17 @@ const BODY = 1, FOOD = 2;
 const KEYS = { left: 0x25, up: 0x26, right: 0x27, down: 0x28 };
 
 // The game board is represented by a 1D array containing rows*cols cells
-// where cell 0 is (x=0 & y=0), cell 1 is (x=1 & y=0), etc.
-// Each cell contains food, snake body or null.
-// Remember that snake movement starts from the head
+// where cell 0 is (x=0 & y=0), cell 1 is (x=1 & y=0), cell 1*cols is (x=0 & y=1), etc.
+// Each board cell contains food, snake body or null.
+// The snake is represented by a 1D array containing positions of the snake
+// on the board from head to tail, i.e. snake[0] is the head position.
 class SnakeGame extends React.Component {
   constructor(props) {
     super(props);
 
     this.boardRef = React.createRef();
 
+    // TODO possibly use the npm package react-autobind to get rid of the code below
     this.getInitialState = this.getInitialState.bind(this);
     this.getStartIndex = this.getStartIndex.bind(this);
     this.getNumRows = this.getNumRows.bind(this);
@@ -29,7 +31,9 @@ class SnakeGame extends React.Component {
   }
 
   componentDidMount() {
-    this.timerId = setInterval(this.tick, this.getSpeed());
+    // Note using the functional setState since we need previous state to calculate next
+    // (Remember that setState is called asynchronously)
+    this.timerId = setInterval(() => this.setState(this.tick), this.getSpeed());
     this.resume();
   }
 
@@ -37,17 +41,14 @@ class SnakeGame extends React.Component {
     clearInterval(this.timerId);
   }
 
-  // This is NOT the "React" version of getInitialState used with React.class
-  // It's just a helper function here to get initial state
+  // This is NOT the "React" version of getInitialState used with React.class !!!!!!!
   getInitialState() {
     let snakeHead = this.getStartIndex();
-    let board = [];
+    let board = [], snake = [snakeHead];
     board[snakeHead] = BODY;
 
     return {
-      snakeHead: snakeHead,
-      snakeTail: snakeHead,
-      snakeLength: 1,
+      snake: snake,
       food: -1,
       board: board,
       paused: true,
@@ -61,17 +62,16 @@ class SnakeGame extends React.Component {
   getNumRows() { return this.props.numRows || 20; }
   getNumCols() { return this.props.numCols || 20; }
   getCellSize() { return this.props.cellSize || 30; }
-  getSpeed() { return this.props.speed || 200; }
+  getSpeed() { return this.props.speed || 100; }
 
   resume() {
-    // setState is asynchronous -- so using the function atomic setState is better since we care about the prevState
-    // Note that when providing null to setState (as of React 16), no re-render is done
-    this.setState((prevState) => prevState.gameOver || !prevState.paused ? null : {paused: false});
+    // Note that when returning null in functional setState callback (as of React 16), no re-render is done
+    this.setState((prevState) => prevState.gameOver || !prevState.paused ? null : { paused: false });
     this.boardRef.current.focus();
   }
 
   pause() {
-    this.setState((prevState) => prevState.gameOver || prevState.paused ? null : {paused: true});
+    this.setState((prevState) => prevState.gameOver || prevState.paused ? null : { paused: true });
   }
 
   reset() {
@@ -79,45 +79,46 @@ class SnakeGame extends React.Component {
     this.resume();
   }
 
-  tick() {
-    if (this.state.gameOver || this.state.paused) return;
+  // This method must be used as functional setState callback
+  tick(prevState) {
+    // Note that when returning null in functional setState callback (as of React 16), no re-render is done
+    if (prevState.gameOver || prevState.paused) return null;
 
-    // 1) Get existing values
+    // 1) Get existing values (copy the arrays to avoid mutating existing state)
     let numRows = this.getNumRows();
     let numCols = this.getNumCols();
-    let board = this.state.board.slice();
-    let snakeLength = this.state.snakeLength;
-    let snakeHead = this.state.snakeHead;
-    let snakeTail = this.state.snakeTail;
-    let food = this.state.food;
+    let board = prevState.board.slice();
+    let snake = prevState.snake.slice();
+    let food = prevState.food;
+    let snakeHead = snake[0];
 
     // 2) Set new head index
-    snakeHead = getNextHead(snakeHead, this.state.direction, numRows, numCols);
+    snakeHead = getNextHead(snakeHead, prevState.direction, numRows, numCols);
 
     switch (board[snakeHead]) {
       case BODY: {
-        // 3) If new head cell is existing body -- game over!!
-        this.setState({ gameOver: true });
-        return;
+        // 3) New head cell is existing body -> game over!!
+        return { gameOver: true };
       }
       case FOOD: {
-        // 4) If new head cell is food -- snake grows (new head cell becomes body, tail index/cell don't change)
+        // 4) New head cell is food -> new head cell becomes body, add new head index to snake (FIRST)
         board[snakeHead] = BODY;
-        snakeLength++;
+        snake.unshift(snakeHead);
         food = -1;
         break;
       }
       default: {
-        // 5) If new head cell is null -- snake moves
-        //    (new head cell becomes body, old tail cell becomes null, new tail index moves to "next" body spot)
+        // 5) New head cell is null -> new head cell becomes body, old tail cell becomes null,
+        //                             remove old tail index from snake (LAST), add new tail index to snake (FIRST)
         board[snakeHead] = BODY;
-        board[snakeTail] = null;
-        snakeTail = getNextTail(snakeTail, board);
+        board[snake[snake.length - 1]] = null;
+        snake.pop();
+        snake.unshift(snakeHead);
         break;
       }
     }
 
-    // 6) Put food on the board if there isn't any
+    // 6) Put food on the board if there isn't any (try 500 times then abort)
     if (food === -1) {
       for (let i = 0; i < 500; i++) {
         let random = generateRandomInteger(0, numRows * numCols);
@@ -132,13 +133,11 @@ class SnakeGame extends React.Component {
       throw new Error("Failed to generate new food position after 500 retries.")
     }
 
-    this.setState({
-      snakeHead: snakeHead,
-      snakeTail: snakeTail,
-      snakeLength: snakeLength,
+    return {
+      snake: snake,
       food: food,
       board: board
-    });
+    };
   }
 
   handleKey(e) {
@@ -147,9 +146,11 @@ class SnakeGame extends React.Component {
       case KEYS.left:
       case KEYS.up:
       case KEYS.right:
-      case KEYS.down:
+      case KEYS.down: {
+        // Note the difference between legal moves is always odd (either 1 or 3)
         this.setState((prevState) => Math.abs(keyCode - prevState.direction) % 2 !== 0 ? {direction: keyCode} : null);
         break;
+      }
       default:
         break;
     }
@@ -172,7 +173,7 @@ class SnakeGame extends React.Component {
 
     return (
       <div className="snake-game">
-        <h1 className="snake-score">Length: {this.state.snakeLength}</h1>
+        <h1 className="snake-score">Length: {this.state.snake.length}</h1>
         <div
           className={'snake-board' + (this.state.gameOver ? ' game-over' : '')}
           ref={this.boardRef}
@@ -197,17 +198,6 @@ class SnakeGame extends React.Component {
 function generateRandomInteger(min, max) {
   let number =  Math.random() * (max - min) + min;
   return Math.floor(number);
-}
-
-function getNextTail(tail, board) {
-  // The following only works when the snake tail is going right/down (+ direction)
-  let nextTail = board.findIndex((value, index) => value === BODY && index > tail);
-
-  // If not, then try to look from the beginning (think circular array)
-  if (nextTail === -1) nextTail = board.findIndex(value => value === BODY);
-
-  if (nextTail === -1) throw new Error("Failed to find snake's next tail! Something must be wrong.");
-  return nextTail;
 }
 
 function getNextHead(head, direction, numRows, numCols) {
